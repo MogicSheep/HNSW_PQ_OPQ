@@ -1,0 +1,6 @@
+__pycache__
+.idea
+graph_data
+data
+*.json
+*.pdf
