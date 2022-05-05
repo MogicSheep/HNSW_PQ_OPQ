@@ -36,19 +36,42 @@ if __name__ == "__main__":
 
     np.random.seed(random_seed)
 
-    file_path = "C:/Users/Lenovo/Desktop/High Dimention Data"
+    file_path = "C:\\Users\\Lenovo\\Desktop\\High Dimention Data\\HNSWpython\\data"
 
 
-    base, d = vecs_io.bvecs_read(file_path + '/sift/base.bvecs')
-    base = base.astype(np.float32)
-    index = faiss.index_factory(int(base.shape[1]), "HNSW" + str(M))
+    base, d = vecs_io.fvecs_read(file_path + '\\sift1M\\sift_base.fvecs')
+    index = faiss.index_factory(int(base.shape[1]), "HNSW32_PQ16")
     hnsw = index.hnsw
+    xq, d = vecs_io.fvecs_read(file_path + "\\sift1M\\sift_query.fvecs")
+    nq, d = xq.shape
+    gt, d = vecs_io.ivecs_read(file_path + "\\sift1M\\sift_groundtruth.ivecs")
     hnsw.efConstruction = efConstruction
     hnsw.efSearch = efSearch
     time_begin = time.time()
+    index.train(base)
     index.add(base)
     time_end = time.time()
     print(time_end - time_begin)
+
+
+    def evaluate(index):
+        # for timing with a single core
+        # faiss.omp_set_num_threads(1)
+        ans = []
+        for k in [1, 5, 10]:
+            t0 = time.time()
+            D, I = index.search(xq, k)
+            t1 = time.time()
+
+            missing_rate = (I == -1).sum() / float(k * nq)
+            recall_at_1 = (I == gt[:, :1]).sum() / float(nq)
+            print("\t %7.3f ms per query, R@1 %.4f, missing rate %.4f" % (
+                (t1 - t0) * 1000.0 / nq, recall_at_1, missing_rate))
+            ans.append((k, nq / ((t1 - t0) * 1000.0), recall_at_1))
+
+        return ans
+
+    evaluate(index)
     for i in range(index.hnsw.max_level):
         graph = get_graph(index.hnsw, i)
         max_m = -1

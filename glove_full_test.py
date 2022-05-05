@@ -28,11 +28,13 @@ def test_glove():
     data_log = {}
     nq, d = xq.shape
 
-    def evaluate(index):
+    def evaluate(index, pool_size):
         # for timing with a single core
         # faiss.omp_set_num_threads(1)
         ans = []
-        for k in [1, 5, 10]:
+        for k in [1, 5, 10, 50, 100]:
+            if pool_size < k:
+                continue
             t0 = time.time()
             D, I = index.search(xq, k)
             t1 = time.time()
@@ -45,8 +47,8 @@ def test_glove():
 
         return ans
 
-    todo = 'hnsw hnsw_sq ivf ivf_hnsw_quantizer nsg'.split()
-
+    todo = 'hnsw hnsw_sq hnsw_pq'.split()
+    # todo = 'hnsw_pq'.split()
     if 'hnsw' in todo:
 
         print("Testing HNSW Flat")
@@ -57,7 +59,7 @@ def test_glove():
 
         # this is the default, higher is more accurate and slower to
         # construct
-        index.hnsw.efConstruction = 40
+        index.hnsw.efConstruction = 50
 
         print("add")
         # to see progress
@@ -67,18 +69,18 @@ def test_glove():
         index.add(xb)
         t1 = time.time()
         data_log['hnsw']['index_time'] = (t1 - t0) * 1000.0
-
-        hnsw_x1 = np.zeros(5)
-        hnsw_y1 = np.zeros(5)
+        data_log['hnsw']['index_size'] = sys.getsizeof(index)
+        hnsw_x1 = np.zeros(8)
+        hnsw_y1 = np.zeros(8)
         print("search")
         count = 0
         data_log['hnsw']['search_time'] = []
-        for efSearch in 16, 32, 64, 128, 256:
-            for bounded_queue in [True, False]:
+        for efSearch in 8, 16, 32, 64, 96, 128, 160, 192, 224, 256, 320, 384, 400:
+            for bounded_queue in [True]:
                 print("efSearch", efSearch, "bounded queue", bounded_queue, end=' ')
                 index.hnsw.search_bounded_queue = bounded_queue
                 index.hnsw.efSearch = efSearch
-                data = evaluate(index)
+                data = evaluate(index, efSearch)
                 res, hnsw_x1[count], hnsw_y1[count] = data[0]
                 data_log['hnsw']['search_time'].append(data)
             count += 1
@@ -96,6 +98,46 @@ def test_glove():
         # training for the scalar quantizer
 
         # data_log
+        data_log['hnsw_sq'] = {}
+        data_log['hnsw_sq']['index_time'] = 0
+        data_log['hnsw_sq']['search_time'] = []
+        t0 = time.time()
+        index.train(xb)
+
+        # this is the default, higher is more accurate and slower to
+        # construct
+        index.hnsw.efConstruction = 50
+        hnsw_pq_x1 = np.zeros(8)
+        hnsw_pq_y1 = np.zeros(8)
+        print("add")
+        # to see progress
+        index.verbose = True
+        index.add(xb)
+        t1 = time.time()
+        data_log['hnsw_sq']['index_size'] = sys.getsizeof(index)
+        data_log['hnsw_sq']['index_time'] = (t1 - t0) * 1000.0
+        print("search")
+        count = 0
+        for efSearch in 8, 16, 32, 64, 96, 128, 160, 192, 224, 256, 320, 384, 400:
+            print("efSearch", efSearch, end=' ')
+            index.hnsw.efSearch = efSearch
+            data = evaluate(index, efSearch)
+            res, hnsw_pq_x1[count], hnsw_pq_y1[count] = data[0]
+            data_log['hnsw_sq']['search_time'].append(data)
+            count += 1
+        plt.plot(hnsw_pq_x1, hnsw_pq_y1, '-', marker='s', color='blue', label='hnsw_SQ')
+
+    if 'hnsw_pq' in todo:
+
+        print("Testing HNSW with a product quantizer")
+        # also set M so that the vectors and links both use 128 bytes per
+        # entry (total 256 bytes)
+        index = faiss.index_factory(d, "HNSW32_PQ20")
+
+        print("training")
+        # training for the scalar quantizer
+
+        # data_log
         data_log['hnsw_pq'] = {}
         data_log['hnsw_pq']['index_time'] = 0
         data_log['hnsw_pq']['search_time'] = []
@@ -104,9 +146,9 @@ def test_glove():
 
         # this is the default, higher is more accurate and slower to
         # construct
-        index.hnsw.efConstruction = 40
-        hnsw_pq_x1 = np.zeros(5)
-        hnsw_pq_y1 = np.zeros(5)
+        index.hnsw.efConstruction = 50
+        hnsw_pq_x1 = np.zeros(8)
+        hnsw_pq_y1 = np.zeros(8)
         print("add")
         # to see progress
         index.verbose = True
@@ -114,16 +156,17 @@ def test_glove():
         t1 = time.time()
 
         data_log['hnsw_pq']['index_time'] = (t1 - t0) * 1000.0
+        data_log['hnsw_pq']['index_size'] = sys.getsizeof(index)
         print("search")
         count = 0
-        for efSearch in 16, 32, 64, 128, 256:
+        for efSearch in 8, 16, 32, 64, 96, 128, 160, 192, 224, 256, 320, 384, 400:
             print("efSearch", efSearch, end=' ')
             index.hnsw.efSearch = efSearch
-            data = evaluate(index)
+            data = evaluate(index, efSearch)
             res, hnsw_pq_x1[count], hnsw_pq_y1[count] = data[0]
             data_log['hnsw_pq']['search_time'].append(data)
             count += 1
-        plt.plot(hnsw_pq_x1, hnsw_pq_y1, '-', marker='s', color='blue', label='hnsw_PQ')
+        plt.plot(hnsw_pq_x1, hnsw_pq_y1, '-', marker='<', color='pink', label='hnsw_PQ')
 
     if 'ivf' in todo:
 
@@ -143,13 +186,14 @@ def test_glove():
 
         print("add")
         index.add(xb)
-        ivf_x1 = np.zeros(5)
-        ivf_y1 = np.zeros(5)
+        ivf_x1 = np.zeros(8)
+        ivf_y1 = np.zeros(8)
         t1 = time.time()
         data_log['ivf']['index_time'] = (t1 - t0) * 1000.0
+        data_log['ivf']['index_size'] = sys.getsizeof(index)
         print("search")
         count = 0
-        for nprobe in 1, 4, 16, 64, 256:
+        for nprobe in 16, 32, 64, 128, 168, 188, 228, 256:
             print("nprobe", nprobe, end=' ')
             index.nprobe = nprobe
             data = evaluate(index)
@@ -176,11 +220,11 @@ def test_glove():
         # to see progress
         index.verbose = True
         index.add(xb)
-        nsg_x1 = np.zeros(5)
-        nsg_y1 = np.zeros(5)
+        nsg_x1 = np.zeros(8)
+        nsg_y1 = np.zeros(8)
         t1 = time.time()
         data_log['nsg']['index_time'] = (t1 - t0) * 1000.0
-
+        data_log['nsg']['index_size'] = sys.getsizeof(index)
         print("search")
         count = 0
         for search_L in 16, 32, 64, 128, 256:
@@ -202,6 +246,7 @@ def test_glove():
 
     plt.savefig('GLOVE_test_k_all' + '.pdf', bbox_inches='tight', dpi=300, pad_inches=0.0)
     plt.show()
+    plt.close('all')
     # 将绘制的图另存为目录下的.pdf格式文件;tight和pad_inches的设置是为了在保存图片时去除白边
     save_json(data_log)
 

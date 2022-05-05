@@ -74,21 +74,22 @@ def bvecs_write(filename, vecs):
 
     f.close()
 
-file_path = "C:/Users/Lenovo/Desktop/High Dimention Data"
+if __name__ == "__main__":
+    file_path = "C:/Users/Lenovo/Desktop/High Dimention Data"
 
-query, d = fvecs_read(file_path + '/sift/sift_query.fvecs')
-# np.savetxt('query.txt', query, fmt='%.3f')
+    query, d = fvecs_read(file_path + '/sift/sift_query.fvecs')
+    # np.savetxt('query.txt', query, fmt='%.3f')
 
-base, d = fvecs_read(file_path + '/sift/sift_base.fvecs')
-# np.savetxt('base.txt', base, fmt='%.3f')
+    base, d = fvecs_read(file_path + '/sift/sift_base.fvecs')
+    # np.savetxt('base.txt', base, fmt='%.3f')
 
-gnd, d = ivecs_read(file_path + '/sift/sift_groundtruth.ivecs')
-# np.savetxt('gnd.txt', gnd, fmt='%.3f')
+    gnd, d = ivecs_read(file_path + '/sift/sift_groundtruth.ivecs')
+    # np.savetxt('gnd.txt', gnd, fmt='%.3f')
 
-query = query[:1000].astype(np.int)
-base = base.astype(np.int)
-gnd = gnd[:,:10].astype(np.int)
-bvecs_write(file_path + '/sift/query.bvecs', query)
-bvecs_write(file_path + '/sift/base.bvecs', base)
-ivecs_write(file_path + '/sift/gnd.ivecs', gnd)
+    query = query[:1000].astype(np.int)
+    base = base.astype(np.int)
+    gnd = gnd[:, :10].astype(np.int)
+    bvecs_write(file_path + '/sift/query.bvecs', query)
+    bvecs_write(file_path + '/sift/base.bvecs', base)
+    ivecs_write(file_path + '/sift/gnd.ivecs', gnd)
 
