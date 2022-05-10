@@ -5,3 +5,5 @@ data
 *.json
 *.pdf
 prebuild_index
+quantazition_data
+*.png

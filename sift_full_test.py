@@ -1,6 +1,7 @@
 import json
 import time
 import sys
+import os
 import matplotlib.pyplot as plt
 import numpy as np
 import faiss
@@ -61,53 +62,63 @@ def test_sift_1m():
     todo = 'hnsw hnsw_sq hnsw_pq'.split()
 
     # todo = 'hnsw_pq'.split()
+
     def evaluate(index, pool_size):
         # for timing with a single core
         # faiss.omp_set_num_threads(1)
         ans = []
-        for k in [5, 10, 50, 100]:
-            if pool_size < k :
-                continue
+        for k in [1, 5, 10, 50, 100]:
             t0 = time.time()
-            D, I = index.search(xq, k)
+            search_tag = k
+            if pool_size < k:
+                search_tag = pool_size
+            D, I = index.search(xq, search_tag)
             t1 = time.time()
 
             missing_rate = (I == -1).sum() / float(k * nq)
-            recall_at_1 = (I == gt[:, :1]).sum() / float(nq)
-            print("\t %7.3f ms per query, R@1 %.4f, missing rate %.4f" % (
-                (t1 - t0) * 1000.0 / nq, recall_at_1, missing_rate))
-            ans.append((k, nq / ((t1 - t0) * 1000.0), recall_at_1))
+            recall = 0.00
+            for i in range(nq):
+                recall += len(set(I[i]) & set(gt[i][:k]))
+            recall /= float(k * nq)
+            print("\t %7.3f ms per query, R@%d %.4f, missing rate %.4f" % (
+                (t1 - t0) * 1000.0 / nq, k, recall, missing_rate))
+            ans.append((k, nq / ((t1 - t0) * 1000.0), recall))
 
         return ans
 
     if 'hnsw' in todo:
 
         print("Testing HNSW Flat")
-
+        file_path = ".\\graph_data\\sift1M_naive.index"
         index = faiss.IndexHNSWFlat(d, 32)
+        data_log['hnsw'] = {}
+        data_log['hnsw']['index_time'] = 0
+        data_log['hnsw']['search_time'] = []
+        if os.path.exists(file_path):
+            print("reading" + "file_path")
+            index = faiss.read_index(file_path)
+        else:
+            # this is the default, higher is more accurate and slower to
+            # construct
+            index.hnsw.efConstruction = 40
 
+            print("add")
+            # to see progress
+            index.verbose = True
+            t0 = time.time()
+            index.add(xb)
+            t1 = time.time()
+            data_log['hnsw']['index_time'] = (t1 - t0) * 1000.0
+
+            faiss.write_index(index, file_path)
         # training is not needed
 
-        # this is the default, higher is more accurate and slower to
-        # construct
-        index.hnsw.efConstruction = 40
-
-        print("add")
-        # to see progress
-        index.verbose = True
-        data_log['hnsw'] = {}
-        t0 = time.time()
-        index.add(xb)
-        t1 = time.time()
-        data_log['hnsw']['index_time'] = (t1 - t0) * 1000.0
-
-        hnsw_x1 = np.zeros(8)
-        hnsw_y1 = np.zeros(8)
+        data_log['hnsw']['index_size'] = sys.getsizeof(file_path)
+        hnsw_x1 = np.zeros(16)
+        hnsw_y1 = np.zeros(16)
         print("search")
         count = 0
-        data_log['hnsw']['search_time'] = []
-        data_log['hnsw']['index_size'] = get_size(index)
-        for efSearch in 8, 16, 32, 64, 96, 128, 160, 192, 224, 256, 320, 384, 400:
+        for efSearch in 1, 2, 4, 8, 16, 32, 64, 96, 128, 160, 192, 224, 256, 320, 384, 400:
             for bounded_queue in [True]:
                 print("efSearch", efSearch, "bounded queue", bounded_queue, end=' ')
                 index.hnsw.search_bounded_queue = bounded_queue
@@ -124,34 +135,44 @@ def test_sift_1m():
         print("Testing HNSW with a scalar quantizer")
         # also set M so that the vectors and links both use 128 bytes per
         # entry (total 256 bytes)
+        file_path = ".\\graph_data\\sift1M_salar_quantization.index"
         index = faiss.IndexHNSWSQ(d, faiss.ScalarQuantizer.QT_8bit, 32)
-
-        print("training")
-        # training for the scalar quantizer
-
         # data_log
         data_log['hnsw_sq'] = {}
         data_log['hnsw_sq']['index_time'] = 0
         data_log['hnsw_sq']['search_time'] = []
-        t0 = time.time()
-        index.train(xb)
+
+        if os.path.exists(file_path):
+            print("reading" + "file_path")
+            index = faiss.read_index(file_path)
+        else:
+            t0 = time.time()
+
+            print("training")
+            # training for the scalar quantizer
+
+            index.train(xt)
+            index.hnsw.efConstruction = 40
+            index.verbose = True
+
+            print("add")
+            # to see progress
+
+            index.add(xb)
+            t1 = time.time()
+            data_log['hnsw_sq']['index_time'] = (t1 - t0) * 1000.0
+
+            faiss.write_index(index, file_path)
 
         # this is the default, higher is more accurate and slower to
         # construct
-        index.hnsw.efConstruction = 40
-        hnsw_pq_x1 = np.zeros(8)
-        hnsw_pq_y1 = np.zeros(8)
-        print("add")
-        # to see progress
-        index.verbose = True
-        index.add(xb)
-        t1 = time.time()
+        hnsw_pq_x1 = np.zeros(16)
+        hnsw_pq_y1 = np.zeros(16)
 
-        data_log['hnsw_sq']['index_time'] = (t1 - t0) * 1000.0
-        data_log['hnsw_sq']['index_size'] = sys.getsizeof(index)
+        data_log['hnsw_sq']['index_size'] = sys.getsizeof(file_path)
         print("search")
         count = 0
-        for efSearch in 8, 16, 32, 64, 96, 128, 160, 192, 224, 256, 320, 384, 400:
+        for efSearch in 1, 2, 4, 8, 16, 32, 64, 96, 128, 160, 192, 224, 256, 320, 384, 400:
             print("efSearch", efSearch, end=' ')
             index.hnsw.efSearch = efSearch
             data = evaluate(index, efSearch)
@@ -165,7 +186,8 @@ def test_sift_1m():
         print("Testing HNSW with a product quantizer")
         # also set M so that the vectors and links both use 128 bytes per
         # entry (total 256 bytes)
-        index = faiss.index_factory(d, "HNSW32_PQ16")
+        file_path = ".\\graph_data\\sift1M_product_quantization.index"
+        index = faiss.index_factory(d, "HNSW32_PQ32")
 
         print("training")
         # training for the scalar quantizer
@@ -174,25 +196,37 @@ def test_sift_1m():
         data_log['hnsw_pq'] = {}
         data_log['hnsw_pq']['index_time'] = 0
         data_log['hnsw_pq']['search_time'] = []
+
+        if os.path.exists(file_path):
+            print("reading" + "file_path")
+            index = faiss.read_index(file_path)
+        else:
+            t0 = time.time()
+
+            print("training")
+            # training for the scalar quantizer
+            index.train(xt)
+            index.hnsw.efConstruction = 40
+            index.verbose = True
+
+            print("add")
+            # to see progress
+            index.verbose = True
+            index.add(xb)
+            t1 = time.time()
+            data_log['hnsw_pq']['index_time'] = (t1 - t0) * 1000.0
+
+            faiss.write_index(index, file_path)
+
         t0 = time.time()
-        index.train(xb)
 
-        # this is the default, higher is more accurate and slower to
-        # construct
-        index.hnsw.efConstruction = 40
-        hnsw_pq_x1 = np.zeros(8)
-        hnsw_pq_y1 = np.zeros(8)
-        print("add")
-        # to see progress
-        index.verbose = True
-        index.add(xb)
-        t1 = time.time()
+        hnsw_pq_x1 = np.zeros(16)
+        hnsw_pq_y1 = np.zeros(16)
 
-        data_log['hnsw_pq']['index_time'] = (t1 - t0) * 1000.0
-        data_log['hnsw_pq']['index_size'] = sys.getsizeof(index)
         print("search")
         count = 0
-        for efSearch in 8, 16, 32, 64, 96, 128, 160, 192, 224, 256, 320, 384, 400:
+        data_log['hnsw_pq']['index_size'] = sys.getsizeof(file_path)
+        for efSearch in 1, 5, 10, 15, 16, 32, 64, 96, 128, 160, 192, 224, 256, 320, 384, 400:
             print("efSearch", efSearch, end=' ')
             index.hnsw.efSearch = efSearch
             data = evaluate(index, efSearch)
@@ -200,6 +234,47 @@ def test_sift_1m():
             data_log['hnsw_pq']['search_time'].append(data)
             count += 1
         plt.plot(hnsw_pq_x1, hnsw_pq_y1, '-', marker='<', color='pink', label='hnsw_PQ')
+
+    if 'hnsw_opq' in todo:
+
+        print("Testing HNSW with a optimal product quantizer")
+        # also set M so that the vectors and links both use 128 bytes per
+        # entry (total 256 bytes)
+        index = faiss.index_factory(d, "HNSW32_16384+PQ12")
+
+        print("training")
+        # training for the scalar quantizer
+
+        # data_log
+        data_log['hnsw_opq'] = {}
+        data_log['hnsw_opq']['index_time'] = 0
+        data_log['hnsw_opq']['search_time'] = []
+        t0 = time.time()
+        index.train(xt)
+
+        # this is the default, higher is more accurate and slower to
+        # construct
+        index.hnsw.efConstruction = 40
+        hnsw_opq_x1 = np.zeros(16)
+        hnsw_opq_y1 = np.zeros(16)
+        print("add")
+        # to see progress
+        index.verbose = True
+        index.add(xb)
+        t1 = time.time()
+
+        data_log['hnsw_opq']['index_time'] = (t1 - t0) * 1000.0
+        data_log['hnsw_opq']['index_size'] = sys.getsizeof(index)
+        print("search")
+        count = 0
+        for efSearch in 1, 2, 5, 10, 16, 32, 64, 96, 128, 160, 192, 224, 256, 320, 384, 400:
+            print("efSearch", efSearch, end=' ')
+            index.hnsw.efSearch = efSearch
+            data = evaluate(index, efSearch)
+            res, hnsw_opq_x1[count], hnsw_opq_y1[count] = data[0]
+            data_log['hnsw_opq']['search_time'].append(data)
+            count += 1
+        plt.plot(hnsw_opq_x1, hnsw_opq_y1, '-', marker='<', color='pink', label='hnsw_OPQ')
 
     if 'ivf' in todo:
 
