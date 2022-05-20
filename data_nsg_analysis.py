@@ -57,7 +57,7 @@ if __name__ == "__main__":
                     method_graph_x[i] = k_qms[i]
                     method_graph_y[i] = k_recall[i]
 
-                plot.subplot(1, 4, sub_count)
+                plot.subplot(2, 2, sub_count)
                 if method == 'nsg_pq64':
                     plot.plot(method_graph_x, method_graph_y, '-', marker='o', color='green', label='nsg_pq64')
                 elif method == 'nsg_pq128':
