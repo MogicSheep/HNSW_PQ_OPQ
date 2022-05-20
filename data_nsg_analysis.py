@@ -1,34 +1,53 @@
 import json
 import numpy as np
 import faiss
-import matplotlib.pyplot  as plot
+import matplotlib.pyplot as plot
 
 
 def load_json(file_name):
-    with open(file_name, "r", encoding="utf-8") as fp:
-        return json.load(fp)
+    data = {}
+    method = ""
+    with open(file_name) as f:
+        for line in f:
+            line  = line.replace("\n","")
+            line_item = line.split(",")
+            if line_item[0] == 'nsg128':
+                method = "nsg_pq128"
+                data[method] = {}
+                data[method]["search_time"] = []
+            elif line_item[0] == 'nsg64':
+                method = "nsg_pq64"
+                data[method] = {}
+                data[method]["search_time"] = []
+            elif line_item[0] == 'nsg32':
+                method = "nsg_pq32"
+                data[method] = {}
+                data[method]["search_time"] = []
+            else:
+                if len(line_item) < 3:
+                    continue
+                data[method]["search_time"].append(line_item)
 
+    return data
 
 
 if __name__ == "__main__":
 
-    for data_file in "data_log_sift.json","data_log_glove.json":
+    for data_file in "result.csv", "none":
 
         data = load_json(data_file)
 
         for method, method_data in data.items():
             print(method)
             sub_count = 0
-            for k in 1, 5, 10, 50, 100:
+            for k in 1, 10, 50, 100:
                 sub_count += 1
                 k_qms = []
                 k_recall = []
-                sorted(method_data["search_time"], key=lambda x: (x[0] == k) * x[2], reverse= True)
-                for search_item in method_data["search_time"]:
-                    for item_k in search_item:
-                        if item_k[0] == k:
-                            k_qms.append(item_k[1])
-                            k_recall.append(item_k[2])
+                for item_k in method_data["search_time"]:
+                    if item_k[0] == str(k):
+                        k_qms.append(item_k[2])
+                        k_recall.append(item_k[1])
                 m = len(k_qms)
 
                 method_graph_x = np.zeros(m)
@@ -38,13 +57,13 @@ if __name__ == "__main__":
                     method_graph_x[i] = k_qms[i]
                     method_graph_y[i] = k_recall[i]
 
-                plot.subplot(1, 5, sub_count)
-                if method == 'hnsw':
-                    plot.plot(method_graph_x, method_graph_y, '-', marker='o', color='green', label='hnsw')
-                elif method == 'hnsw_sq':
-                    plot.plot(method_graph_x, method_graph_y, '-', marker='^', color='blue', label='hnsw_sq')
-                elif method == 'hnsw_pq':
-                    plot.plot(method_graph_x, method_graph_y, '-', marker='d', color='pink', label='hnsw_pq')
+                plot.subplot(1, 4, sub_count)
+                if method == 'nsg_pq64':
+                    plot.plot(method_graph_x, method_graph_y, '-', marker='o', color='green', label='nsg_pq64')
+                elif method == 'nsg_pq128':
+                    plot.plot(method_graph_x, method_graph_y, '-', marker='^', color='blue', label='nsg_pq128')
+                elif method == 'nsg_pq32':
+                    plot.plot(method_graph_x, method_graph_y, '-', marker='d', color='pink', label='nsg_pq32')
                 elif method == 'hnsw_opq':
                     plot.plot(method_graph_x, method_graph_y, '-', marker='x', color='yellow', label='hnsw_opq')
                 elif method == 'hnsw_opq64':
